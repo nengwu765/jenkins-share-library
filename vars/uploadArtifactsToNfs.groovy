@@ -15,7 +15,7 @@
  * @return Map 返回上传制品数据
  *         eg: [
  *              'file1':[
- *                  'url':'https:nexus.demo.com/.../file1'  // 文件在nexus中的上传路径【即下载路径】
+ *                  'url':'https:down.demo.com/.../file1'  // 文件在nexus中的上传路径【即下载路径】
  *                  'md5':'xxxx' // 文件md5值
  *                  'sha1':'xxxx'   // 文件sha1值
  *               ],
@@ -28,12 +28,15 @@ def call(String nexusRepository, String dir, String fileMatchRegex, String uploa
             if (sh(script: "test -f \'${dir}/${fileName}\'", returnStatus: true) == 0 ) {
                 if (fileName ==~ /.+$fileMatchRegex$/ || fileName ==~ /^$fileMatchRegex.+/ || fileName ==~ /$fileMatchRegex/) {
                     // 上传地址
-                    uploadUrl = "https://nexus.demo.com/repository/${nexusRepository}/${uploadPath}/${fileName}"
+                    uploadUrl = "http://down.demo.com/mobile/${nexusRepository}/${uploadPath}/${fileName}"
 
-                    sh "curl -sL -w 'Upload the jar to the repository status code: %{http_code}\n' " +
-                            "-u ${env.NEXUS_UPLOAD_CRED_USR}:${env.NEXUS_UPLOAD_CRED_PSW} " +
-                            "--upload-file \'${dir}/${fileName}\' " +
-                            "\'${uploadUrl}\'"
+                    // Copy制品文件至制品共享存储空间（/opt/artifactory/mobile-cicd/）
+                    artifactTargetDir = "/opt/artifactory/mobile-cicd/" + "${nexusRepository}/${uploadPath}"
+                    if (sh(script: "test -d \'${artifactTargetDir}\'", returnStatus: true) != 0) {
+                        sh "mkdir -p ${artifactTargetDir}"
+                    }
+                    sh "cp \'${dir}/${fileName}\'  \'${artifactTargetDir}\' "
+
                     md5 = sh(script: "md5sum \'${dir}/${fileName}\' | sed \'s/\\ .*\$//\'", returnStdout: true).trim()
                     sha1 = sh(script: "sha1sum \'${dir}/${fileName}\' | sed \'s/\\ .*\$//\'", returnStdout: true).trim()
                     artifacts["${fileName}"] = [
@@ -43,7 +46,7 @@ def call(String nexusRepository, String dir, String fileMatchRegex, String uploa
                     ]
                 }
             } else if ('' != fileName && isRecursion) {
-                artifacts = uploadArtifactsToNexus(nexusRepository, "${dir}/${fileName}", fileMatchRegex, uploadPath, isRecursion, artifacts)
+                artifacts = uploadArtifactsToNfs(nexusRepository, "${dir}/${fileName}", fileMatchRegex, uploadPath, isRecursion, artifacts)
             }
         }
     }
